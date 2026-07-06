@@ -1,22 +1,3 @@
-"""
-Training script for the California Housing price model.
-
-Run directly:  python -m app.ml.train
-
-What it does (the "data science" story behind this app):
-1. Loads housing.csv and builds an income-stratified train/test split
-   (median_income is skewed, so a stratified split keeps both sets
-   representative rather than relying on pure randomness).
-2. Builds a preprocessing pipeline (median imputation + scaling for
-   numerics, one-hot encoding for the categorical ocean_proximity field).
-3. Compares three candidate models with 10-fold cross-validation on the
-   training set: Linear Regression, Decision Tree, Random Forest.
-4. Refits the best-performing model (Random Forest) on the full training
-   set and evaluates it once on the untouched test set.
-5. Persists the fitted pipeline + model + a metrics.json bundle (CV
-   scores, test metrics, feature importances, dataset stats) that the
-   Flask app reads to power the dashboard and insights pages.
-"""
 import json
 import os
 import time
@@ -58,7 +39,6 @@ def stratified_split(housing: pd.DataFrame):
 
 
 def get_feature_names(pipeline):
-    """Human-readable feature names after the ColumnTransformer, for importances."""
     try:
         return list(pipeline.get_feature_names_out())
     except Exception:

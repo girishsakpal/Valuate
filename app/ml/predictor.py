@@ -1,7 +1,3 @@
-"""
-Loads the trained pipeline + model once per process and exposes a
-single `predict_one()` helper used by the Flask routes.
-"""
 import json
 import os
 
@@ -43,7 +39,6 @@ def get_metrics(app):
 
 
 def predict_one(app, features: dict) -> float:
-    """features must contain the 9 raw housing.csv input columns."""
     global _model, _pipeline
     if _model is None or _pipeline is None:
         load_artifacts(app)

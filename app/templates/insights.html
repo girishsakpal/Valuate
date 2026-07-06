@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Model - Valuate{% endblock %}
+{% block content %}
+
+<div class="eyebrow">Model card</div>
+<h1 style="font-size:28px;">How the appraisal model was built.</h1>
+
+{% if not metrics %}
+<div class="card empty-state">
+  No metrics yet. Run <code class="mono">python -m app.ml.train</code> to train the model and populate this page.
+</div>
+{% else %}
+<p style="color:var(--text-mid); max-width:70ch; margin:10px 0 30px;">
+  {{ metrics.model_type }}, fit on {{ "{:,}".format(metrics.train_rows) }} income-stratified training rows and
+  evaluated once on {{ "{:,}".format(metrics.test_rows) }} held-out rows. Trained in {{ metrics.train_seconds }}s.
+</p>
+
+<div class="stat-grid">
+  <div class="card card-crop">
+    <div class="card-label">Test RMSE</div>
+    <div class="card-value">${{ "{:,.0f}".format(metrics.test_metrics.rmse) }}</div>
+    <div class="card-sub">typical error, dollars</div>
+  </div>
+  <div class="card card-crop">
+    <div class="card-label">Test MAE</div>
+    <div class="card-value">${{ "{:,.0f}".format(metrics.test_metrics.mae) }}</div>
+    <div class="card-sub">median-ish error, dollars</div>
+  </div>
+  <div class="card card-crop">
+    <div class="card-label">R²</div>
+    <div class="card-value accent">{{ "%.3f"|format(metrics.test_metrics.r2) }}</div>
+    <div class="card-sub">variance explained</div>
+  </div>
+  <div class="card card-crop">
+    <div class="card-label">Best CV candidate</div>
+    <div class="card-value" style="font-size:20px;">{{ metrics.best_cv_candidate.replace('_',' ')|title }}</div>
+    <div class="card-sub">of 3 models, 10-fold CV</div>
+  </div>
+</div>
+
+<div class="section-head">
+  <h2>Model comparison</h2>
+  <span class="section-note">10-fold cross-validated RMSE, lower is better</span>
+</div>
+<div class="card card-crop">
+  <div id="cv-chart" class="chart-box" style="height:280px;"></div>
+</div>
+
+<div class="panel-grid" style="margin-top:20px;">
+  <div class="card card-crop">
+    <div class="card-label">Feature importance</div>
+    <div id="importance-chart" class="chart-box" style="height:380px;"></div>
+  </div>
+  <div class="card card-crop">
+    <div class="card-label">Predicted vs. actual (test sample)</div>
+    <div id="scatter-chart" class="chart-box" style="height:380px;"></div>
+  </div>
+</div>
+
+<div class="section-head">
+  <h2>Pipeline</h2>
+  <span class="section-note">what happens between input and prediction</span>
+</div>
+<div class="card card-crop">
+  <ol style="margin:0; padding-left: 20px; color: var(--text-mid); font-family: var(--font-mono); font-size: 13px; line-height: 2;">
+    <li>Stratified 80/20 split on binned <code class="mono">median_income</code> to keep train/test representative</li>
+    <li>Numeric columns → median imputation → standard scaling</li>
+    <li>Categorical <code class="mono">ocean_proximity</code> → one-hot encoding (unseen categories ignored)</li>
+    <li>Candidates compared via 10-fold CV: Linear Regression, Decision Tree, Random Forest</li>
+    <li>Winning model refit on full training set, scored once on held-out test set</li>
+    <li>Pipeline + model persisted with <code class="mono">joblib</code>, served through Flask for live inference</li>
+  </ol>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if metrics %}
+<script>
+const metrics = {{ metrics_json | safe }};
+const plotlyBase = {
+  paper_bgcolor: 'transparent',
+  plot_bgcolor: 'transparent',
+  font: { family: 'IBM Plex Mono, monospace', color: '#b9cbdb', size: 11 },
+  margin: { t: 10, r: 10, b: 40, l: 90 },
+};
+
+const cvNames = Object.keys(metrics.cv_results);
+const cvMeans = cvNames.map(n => metrics.cv_results[n].rmse_mean);
+const cvStd = cvNames.map(n => metrics.cv_results[n].rmse_std);
+Plotly.newPlot('cv-chart', [{
+  type: 'bar',
+  x: cvNames.map(n => n.replace('_',' ')),
+  y: cvMeans,
+  error_y: { type: 'data', array: cvStd, color: '#7d93aa' },
+  marker: { color: cvNames.map(n => n === metrics.best_cv_candidate ? '#e3a55d' : '#6fd6d9') },
+}], { ...plotlyBase, margin: { t: 10, r: 10, b: 40, l: 60 }, yaxis: { title: 'RMSE (USD)', gridcolor: 'rgba(120,197,210,0.1)' } }, { displayModeBar: false, responsive: true });
+
+const topFeatures = metrics.feature_importance.slice(0, 10).reverse();
+Plotly.newPlot('importance-chart', [{
+  type: 'bar',
+  orientation: 'h',
+  x: topFeatures.map(f => f.importance),
+  y: topFeatures.map(f => f.feature.replace('num__','').replace('cat__ocean_proximity_','ocean: ')),
+  marker: { color: '#6fd6d9' },
+}], { ...plotlyBase, xaxis: { title: 'importance', gridcolor: 'rgba(120,197,210,0.1)' } }, { displayModeBar: false, responsive: true });
+
+Plotly.newPlot('scatter-chart', [
+  {
+    type: 'scatter', mode: 'markers', name: 'test points',
+    x: metrics.scatter_sample.actual, y: metrics.scatter_sample.predicted,
+    marker: { color: '#6fd6d9', size: 5, opacity: 0.7 },
+  },
+  {
+    type: 'scatter', mode: 'lines', name: 'perfect fit',
+    x: [0, 500000], y: [0, 500000],
+    line: { color: '#e3a55d', dash: 'dash', width: 1.5 },
+  },
+], { ...plotlyBase, xaxis: { title: 'actual (USD)', gridcolor: 'rgba(120,197,210,0.1)' }, yaxis: { title: 'predicted (USD)', gridcolor: 'rgba(120,197,210,0.1)' }, showlegend: false }, { displayModeBar: false, responsive: true });
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Valuate - Housing Valuation Model{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+
+<div class="grid-backdrop" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="{{ url_for('main.dashboard') }}">
+      <span class="brand-mark">
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 13L13 4L23 13" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M6 12V22H20V12" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M11 22V16H15V22" stroke="currentColor" stroke-width="1.6"/>
+        </svg>
+      </span>
+      <span class="brand-text">VALUATE<span class="brand-sub">/housing model</span></span>
+    </a>
+    <nav class="main-nav">
+      <a href="{{ url_for('main.dashboard') }}" class="{{ 'active' if request.endpoint == 'main.dashboard' }}"><span class="nav-idx">01</span>Survey</a>
+      <a href="{{ url_for('predict.predict') }}" class="{{ 'active' if request.endpoint == 'predict.predict' }}"><span class="nav-idx">02</span>Appraise</a>
+      <a href="{{ url_for('history.history') }}" class="{{ 'active' if request.endpoint == 'history.history' }}"><span class="nav-idx">03</span>Log</a>
+      <a href="{{ url_for('insights.insights') }}" class="{{ 'active' if request.endpoint == 'insights.insights' }}"><span class="nav-idx">04</span>Model</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page-shell">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-stack">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <span>VALUATE - end-to-end ML valuation system · California Housing Dataset</span>
+    <span class="footer-meta">Flask · scikit-learn · SQLAlchemy · {{ current_year }}</span>
+  </div>
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

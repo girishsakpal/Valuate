@@ -1,9 +1,3 @@
-"""
-Preprocessing pipeline shared between training and inference.
-
-Numerical columns: median-impute missing values, then standard-scale.
-Categorical column (ocean_proximity): one-hot encode.
-"""
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer

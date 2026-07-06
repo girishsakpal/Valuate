@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Log - Valuate{% endblock %}
+{% block content %}
+
+<div class="eyebrow">Monitoring</div>
+<h1 style="font-size:28px;">Appraisal log</h1>
+<p style="color:var(--text-mid); max-width:60ch; margin:10px 0 30px;">
+  Every request to the model is written to the database - this is the raw material for drift monitoring
+  and demonstrates the persistence layer switching cleanly between SQLite (dev) and PostgreSQL (prod).
+</p>
+
+{% if records %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Logged</th><th>Coordinates</th><th>Proximity</th>
+        <th>Age</th><th>Rooms</th><th>Households</th><th>Income</th><th>Predicted</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td>{{ r.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+        <td>{{ "%.2f"|format(r.latitude) }}, {{ "%.2f"|format(r.longitude) }}</td>
+        <td><span class="tag">{{ r.ocean_proximity }}</span></td>
+        <td>{{ r.housing_median_age|int }}</td>
+        <td>{{ "{:,.0f}".format(r.total_rooms) }}</td>
+        <td>{{ "{:,.0f}".format(r.households) }}</td>
+        <td>${{ "{:,.0f}".format(r.median_income * 10000) }}</td>
+        <td class="value">${{ "{:,.0f}".format(r.predicted_value) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="pagination">
+  {% if pagination.has_prev %}
+    <a href="{{ url_for('history.history', page=pagination.prev_num) }}">← prev</a>
+  {% endif %}
+  <span class="current">page {{ pagination.page }} / {{ pagination.pages or 1 }}</span>
+  {% if pagination.has_next %}
+    <a href="{{ url_for('history.history', page=pagination.next_num) }}">next →</a>
+  {% endif %}
+</div>
+{% else %}
+<div class="card empty-state">
+  Nothing logged yet. <a href="{{ url_for('predict.predict') }}" style="color:var(--cyan-bright)">Run your first appraisal →</a>
+</div>
+{% endif %}
+
+{% endblock %}

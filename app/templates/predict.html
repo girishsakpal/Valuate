@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block title %}Appraise - Valuate{% endblock %}
+{% block content %}
+
+<div class="eyebrow">Random Forest Regressor · live inference</div>
+<h1 style="font-size:30px; max-width:32ch;">Describe a block group, get an appraised median value.</h1>
+<p style="color:var(--text-mid); max-width:60ch; margin:12px 0 30px;">
+  Inputs mirror the original census fields the model was trained on. Drag a slider or type an exact
+  number — both stay in sync. Values are logged to the appraisal log below once you submit.
+</p>
+
+{% if not model_ready %}
+<div class="card" style="border-color: rgba(236,111,111,.5); margin-bottom:24px;">
+  <strong style="color:var(--danger);">Model not trained.</strong>
+  <span style="color:var(--text-mid);"> Run <code class="mono">python -m app.ml.train</code> from the project root, then reload this page.</span>
+</div>
+{% endif %}
+
+{% if result is not none %}
+<div class="card card-crop" style="margin-bottom: 34px;">
+  <div class="stamp-wrap">
+    <div class="stamp">
+      <div class="stamp-eyebrow">Appraised Value</div>
+      <div class="stamp-value">${{ "{:,.0f}".format(result) }}</div>
+      <div class="stamp-date">RANDOM FOREST · {{ submitted.ocean_proximity }}</div>
+    </div>
+  </div>
+  <p style="text-align:center; color:var(--text-low); font-family:var(--font-mono); font-size:12px;">
+    Logged to the appraisal history — <a href="{{ url_for('history.history') }}" style="color:var(--cyan-bright);">view entry →</a>
+  </p>
+</div>
+{% endif %}
+
+<div class="panel-grid" style="grid-template-columns: 1fr 0.85fr; align-items:start;">
+
+  <form class="card card-crop" method="POST" action="{{ url_for('predict.predict') }}" id="appraise-form">
+
+    {% for group in field_groups %}
+    <div class="input-group">
+      <div class="input-group-head">
+        <span class="input-group-title">{{ group.title }}</span>
+        <span class="input-group-note">{{ group.note }}</span>
+      </div>
+      <div class="form-grid">
+        {% for field in group.fields %}
+        <div class="field" data-scale="{{ field.scale }}" data-min="{{ field.min }}" data-max="{{ field.max }}" data-step="{{ field.step }}">
+          <label for="{{ field.key }}">
+            {{ field.label }}
+            {% if field.unit %}<span class="field-unit">{{ field.unit }}</span>{% endif %}
+          </label>
+          <div class="slider-combo">
+            <input type="range" class="pos-slider" id="{{ field.key }}_slider" min="0" max="1000" step="1"
+                   oninput="onSliderInput('{{ field.key }}'); syncSchematic();">
+            <input type="number" class="value-input mono" id="{{ field.key }}" name="{{ field.key }}"
+                   step="{{ field.step }}" min="{{ field.min }}" max="{{ field.max }}"
+                   value="{{ submitted[field.key] if submitted else field.default }}"
+                   oninput="onNumberInput('{{ field.key }}'); syncSchematic();">
+          </div>
+          <div class="field-range">
+            <span>{{ field.min }}</span><span>{{ field.max }}</span>
+          </div>
+          {% if field.help %}<div class="field-help">{{ field.help }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+    <div class="input-group">
+      <div class="input-group-head">
+        <span class="input-group-title">Ocean proximity</span>
+        <span class="input-group-note">categorical field, one-hot encoded</span>
+      </div>
+      <div class="pill-group">
+        {% for opt in proximity_options %}
+        <label class="pill">
+          <input type="radio" name="ocean_proximity" value="{{ opt }}"
+                 {% if submitted and submitted.ocean_proximity == opt %}checked{% elif not submitted and opt == 'INLAND' %}checked{% endif %}
+                 onchange="syncSchematic();">
+          <span>{{ opt }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="margin-top:30px; display:flex; justify-content:space-between; align-items:center;">
+      <span class="field-help" id="form-warning"></span>
+      <button type="submit" class="btn btn-primary" {{ 'disabled' if not model_ready }}>Run appraisal →</button>
+    </div>
+  </form>
+
+  <aside class="card card-crop" style="position:sticky; top:92px;">
+    <div class="card-label">Schematic reference</div>
+    <svg id="blueprint-svg" viewBox="0 0 320 300" style="width:100%; height:auto; margin-top:8px;">
+      <path d="M40 130 L160 50 L280 130" fill="none" stroke="#6fd6d9" stroke-width="1.6"/>
+      <rect x="60" y="130" width="200" height="130" fill="none" stroke="#6fd6d9" stroke-width="1.6"/>
+      <rect x="145" y="190" width="30" height="70" fill="none" stroke="#e3a55d" stroke-width="1.4"/>
+      <g id="room-windows" stroke="#6fd6d9" stroke-width="1.2" fill="none"></g>
+      <line x1="60" y1="278" x2="260" y2="278" stroke="#7d93aa" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="160" y="292" fill="#7d93aa" font-family="IBM Plex Mono" font-size="9" text-anchor="middle" id="dim-age">built --- yrs ago</text>
+      <text x="16" y="20" fill="#8ca3bc" font-family="IBM Plex Mono" font-size="9" id="dim-income">income —</text>
+      <text x="16" y="36" fill="#8ca3bc" font-family="IBM Plex Mono" font-size="9" id="dim-pop">population —</text>
+      <text x="16" y="52" fill="#8ca3bc" font-family="IBM Plex Mono" font-size="9" id="dim-hh">households —</text>
+      <text x="160" y="20" fill="#f2c184" font-family="IBM Plex Mono" font-size="10" text-anchor="middle" id="dim-proximity" font-weight="600">INLAND</text>
+    </svg>
+    <p class="card-sub" style="margin-top:10px;">The schematic redraws its window grid as "rooms per household" changes — a rough, illustrative read of density, not an architectural drawing.</p>
+
+    <div class="dim-line" style="margin-top:22px;">LIVE READOUT</div>
+    <div class="readout-grid" id="readout-grid"></div>
+  </aside>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ---- log/linear slider <-> number-input sync ---- */
+function fieldMeta(key) {
+  const el = document.getElementById(key);
+  const wrap = el.closest('.field');
+  return {
+    min: parseFloat(wrap.dataset.min),
+    max: parseFloat(wrap.dataset.max),
+    step: parseFloat(wrap.dataset.step),
+    scale: wrap.dataset.scale,
+  };
+}
+
+function valueToPos(value, meta) {
+  if (meta.scale === 'log') {
+    const lv = Math.log(Math.max(value, meta.min));
+    const lo = Math.log(meta.min), hi = Math.log(meta.max);
+    return Math.round(1000 * (lv - lo) / (hi - lo));
+  }
+  return Math.round(1000 * (value - meta.min) / (meta.max - meta.min));
+}
+
+function posToValue(pos, meta) {
+  let value;
+  if (meta.scale === 'log') {
+    const lo = Math.log(meta.min), hi = Math.log(meta.max);
+    value = Math.exp(lo + (pos / 1000) * (hi - lo));
+  } else {
+    value = meta.min + (pos / 1000) * (meta.max - meta.min);
+  }
+  const decimals = meta.step < 1 ? 2 : 0;
+  return Math.min(meta.max, Math.max(meta.min, parseFloat(value.toFixed(decimals))));
+}
+
+function onSliderInput(key) {
+  const meta = fieldMeta(key);
+  const slider = document.getElementById(key + '_slider');
+  const numberInput = document.getElementById(key);
+  numberInput.value = posToValue(parseFloat(slider.value), meta);
+}
+
+function onNumberInput(key) {
+  const meta = fieldMeta(key);
+  const slider = document.getElementById(key + '_slider');
+  const numberInput = document.getElementById(key);
+  let v = parseFloat(numberInput.value);
+  if (isNaN(v)) return;
+  v = Math.min(meta.max, Math.max(meta.min, v));
+  slider.value = valueToPos(v, meta);
+}
+
+function initSliders() {
+  document.querySelectorAll('.field').forEach(wrap => {
+    const numberInput = wrap.querySelector('.value-input');
+    const key = numberInput.id;
+    const meta = fieldMeta(key);
+    const slider = document.getElementById(key + '_slider');
+    slider.value = valueToPos(parseFloat(numberInput.value), meta);
+  });
+}
+
+/* ---- blueprint schematic ---- */
+function syncSchematic() {
+  const val = (id) => parseFloat(document.getElementById(id).value);
+  const rooms = val('total_rooms');
+  const households = Math.max(val('households'), 1);
+  const population = val('population');
+  const age = val('housing_median_age');
+  const income = val('median_income');
+  const proximityInput = document.querySelector('input[name="ocean_proximity"]:checked');
+  const proximity = proximityInput ? proximityInput.value : 'INLAND';
+
+  const roomsPerHousehold = Math.min(Math.max(rooms / households, 2), 12);
+  const cols = Math.round(roomsPerHousehold);
+
+  const g = document.getElementById('room-windows');
+  g.innerHTML = '';
+  const startX = 78, endX = 242, y = 155, h = 22, spacing = (endX - startX) / cols;
+  for (let i = 0; i < cols; i++) {
+    const x = startX + i * spacing;
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', x);
+    rect.setAttribute('y', y);
+    rect.setAttribute('width', Math.max(spacing - 8, 6));
+    rect.setAttribute('height', h);
+    g.appendChild(rect);
+  }
+
+  document.getElementById('dim-age').textContent = `built ${Math.round(age)} yrs ago`;
+  document.getElementById('dim-income').textContent = `income $${Math.round(income * 10000).toLocaleString()}`;
+  document.getElementById('dim-pop').textContent = `population ${Math.round(population).toLocaleString()}`;
+  document.getElementById('dim-hh').textContent = `households ${Math.round(households).toLocaleString()}`;
+  document.getElementById('dim-proximity').textContent = proximity;
+
+  const warn = document.getElementById('form-warning');
+  const bedrooms = val('total_bedrooms');
+  if (bedrooms > rooms) {
+    warn.textContent = '⚠ bedrooms exceed total rooms';
+    warn.style.color = 'var(--danger)';
+  } else {
+    warn.textContent = '';
+  }
+
+  const readout = document.getElementById('readout-grid');
+  readout.innerHTML = `
+    <div><span>rooms / household</span><b>${(rooms / households).toFixed(1)}</b></div>
+    <div><span>people / household</span><b>${(population / households).toFixed(1)}</b></div>
+    <div><span>income</span><b>$${Math.round(income * 10000).toLocaleString()}</b></div>
+  `;
+}
+
+initSliders();
+syncSchematic();
+</script>
+{% endblock %}

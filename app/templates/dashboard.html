@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Survey - valuate{% endblock %}
+{% block content %}
+
+<section class="hero">
+  <div>
+    <div class="eyebrow">California Housing Dataset · 1990 Census</div>
+    <h1>A field survey of {{ "{:,}".format(summary.rows) }} block groups.</h1>
+    <p class="lead">Explore the raw terrain behind the valuation model - price distribution, geography, and the correlations a Random Forest regressor learned from before you request an appraisal.</p>
+    <div class="hero-actions">
+      <a href="{{ url_for('predict.predict') }}" class="btn btn-primary">Run an appraisal →</a>
+      <a href="{{ url_for('insights.insights') }}" class="btn">Inspect the model</a>
+    </div>
+  </div>
+  <div class="card card-crop">
+    <div class="card-label">Live index</div>
+    <div class="stat-grid" style="grid-template-columns: repeat(2,1fr); margin-top:10px;">
+      <div>
+        <div class="card-label">Median value</div>
+        <div class="card-value">${{ "{:,.0f}".format(summary.median_price) }}</div>
+      </div>
+      <div>
+        <div class="card-label">Median income</div>
+        <div class="card-value">${{ "{:,.0f}".format(summary.median_income * 10000) }}</div>
+      </div>
+      <div>
+        <div class="card-label">Avg. rooms / group</div>
+        <div class="card-value">{{ "{:,.0f}".format(summary.avg_rooms) }}</div>
+      </div>
+      <div>
+        <div class="card-label">Appraisals logged</div>
+        <div class="card-value accent">{{ total_predictions }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-head">
+  <h2>Geographic distribution</h2>
+  <span class="section-note">2,500-point sample · colored by median block-group value</span>
+</div>
+<div class="card card-crop">
+  <div id="map-chart" class="chart-box" style="height:460px;"></div>
+</div>
+
+<div class="section-head">
+  <h2>Price &amp; correlation</h2>
+  <span class="section-note">what the model actually sees</span>
+</div>
+<div class="panel-grid">
+  <div class="card card-crop">
+    <div class="card-label">Median house value - distribution</div>
+    <div id="hist-chart" class="chart-box" style="height:340px;"></div>
+  </div>
+  <div class="card card-crop">
+    <div class="card-label">Feature correlation matrix</div>
+    <div id="corr-chart" class="chart-box" style="height:340px;"></div>
+  </div>
+</div>
+
+<div class="section-head">
+  <h2>Recent appraisals</h2>
+  <a href="{{ url_for('history.history') }}" class="section-note">view full log →</a>
+</div>
+{% if recent_predictions %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Time</th><th>Location</th><th>Proximity</th><th>Income</th><th>Predicted value</th></tr>
+    </thead>
+    <tbody>
+      {% for p in recent_predictions %}
+      <tr>
+        <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+        <td>{{ "%.2f"|format(p.latitude) }}°N, {{ "%.2f"|format(p.longitude) }}°W</td>
+        <td><span class="tag">{{ p.ocean_proximity }}</span></td>
+        <td>${{ "{:,.0f}".format(p.median_income * 10000) }}</td>
+        <td class="value">${{ "{:,.0f}".format(p.predicted_value) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty-state">No appraisals logged yet. <a href="{{ url_for('predict.predict') }}" style="color:var(--cyan-bright)">Run the first one →</a></div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const mapData = {{ map_data | safe }};
+const priceHist = {{ price_hist | safe }};
+const correlation = {{ correlation | safe }};
+
+const plotlyBase = {
+  paper_bgcolor: 'transparent',
+  plot_bgcolor: 'transparent',
+  font: { family: 'IBM Plex Mono, monospace', color: '#b9cbdb', size: 11 },
+  margin: { t: 10, r: 10, b: 40, l: 50 },
+};
+
+Plotly.newPlot('map-chart', [{
+  type: 'scattergeo',
+  lon: mapData.lon,
+  lat: mapData.lat,
+  mode: 'markers',
+  marker: {
+    size: 5,
+    color: mapData.price,
+    colorscale: [[0, '#113058'], [0.5, '#6fd6d9'], [1, '#e3a55d']],
+    colorbar: { title: 'USD', tickfont: { color: '#8ca3bc', size: 9 }, titlefont: { color: '#8ca3bc', size: 9 } },
+    line: { width: 0 },
+    opacity: 0.85,
+  },
+}], {
+  ...plotlyBase,
+  geo: {
+    scope: 'usa',
+    center: { lon: -119.4, lat: 37.2 },
+    projection: { type: 'mercator', scale: 5.2 },
+    showland: true,
+    landcolor: '#0c2440',
+    showsubunits: true,
+    subunitcolor: 'rgba(120,197,210,0.25)',
+    showcoastlines: true,
+    coastlinecolor: 'rgba(120,197,210,0.35)',
+    showocean: true,
+    oceancolor: '#081a2e',
+    bgcolor: 'transparent',
+    lataxis: { range: [32, 42.5] },
+    lonaxis: { range: [-125, -113.5] },
+  },
+}, { displayModeBar: false, responsive: true });
+
+Plotly.newPlot('hist-chart', [{
+  type: 'histogram',
+  x: priceHist,
+  marker: { color: '#6fd6d9', line: { color: '#081a2e', width: 1 } },
+  nbinsx: 40,
+}], {
+  ...plotlyBase,
+  xaxis: { title: 'Median house value (USD)', gridcolor: 'rgba(120,197,210,0.1)', zeroline: false },
+  yaxis: { title: 'Block groups', gridcolor: 'rgba(120,197,210,0.1)', zeroline: false },
+}, { displayModeBar: false, responsive: true });
+
+Plotly.newPlot('corr-chart', [{
+  type: 'heatmap',
+  z: correlation.matrix,
+  x: correlation.columns,
+  y: correlation.columns,
+  colorscale: [[0, '#0c2440'], [0.5, '#17406f'], [1, '#e3a55d']],
+  showscale: false,
+}], {
+  ...plotlyBase,
+  xaxis: { tickfont: { size: 9 }, tickangle: -35 },
+  yaxis: { tickfont: { size: 9 }, autorange: 'reversed' },
+  margin: { t: 10, r: 10, b: 80, l: 110 },
+}, { displayModeBar: false, responsive: true });
+</script>
+{% endblock %}
